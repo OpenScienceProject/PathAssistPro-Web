@@ -62,10 +62,20 @@ export const usePathAssist = (apiKey, modelName = 'gemini-3-pro') => {
       // ENRICHISSEMENT DU CONTEXTE (Fix Corpus): On injecte le résultat de la recherche initiale
       // pour que l'assistant n'oublie pas le sujet principal (ex: Adenocarcinome vs Mésothéliome).
       
+      const tablesSummary = session.initialSearch.tables 
+        ? JSON.stringify(session.initialSearch.tables.map(t => ({ title: t.title, headers: t.headers, sampleRows: t.rows.slice(0, 5) }))) 
+        : "Aucun tableau";
+
       const initialContextMsg = {
         role: 'model', // On fait passer ça pour une réponse précédente du modèle
-        content: `CONTEXTE INITIAL ÉTABLI (RÉSUMÉ): 
+        content: `CONTEXTE INITIAL ÉTABLI (RÉSUMÉ):
+        SUJET DE RECHERCHE INITIALE: "${session.metadata.query}"
+        
+        RÉPONSE SYNTHÉTIQUE:
         ${session.initialSearch.directAnswer?.text || "Recherche effectuée."}
+        
+        DONNÉES STRUCTURÉES (Tableaux):
+        ${tablesSummary}
         
         SOURCES INITIALES:
         ${(session.initialSearch.directAnswer?.sources || []).join(', ')}

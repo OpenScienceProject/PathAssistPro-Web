@@ -16,31 +16,27 @@ Objectif: Aider au diagnostic différentiel, à l'immunohistochimie (IHC) et à 
 RÈGLES ABSOLUES DE SÉCURITÉ MÉDICALE (ZERO HALLUCINATION):
 1. NE JAMAIS inventer de données. Si info non trouvée via Grounding -> "Information non disponible".
 2. Chaque affirmation médicale majeure DOIT être soutenue par une source trouvée.
-3. Si la question porte sur un "Diagnostic Différentiel" (DDx), tu DOIS générer un tableau comparatif complet.
+3. Si la question demande un "Diagnostic Différentiel" (DDx), une comparaison ou une liste, tu DOIS générer un tableau "tables" dans le JSON.
 
 RÈGLES POUR LE CHAT (ASSISTANT VIRTUEL):
 - Tu dois agir comme un expert qui continue une conversation.
 - Tu DISPOSES du contexte de la recherche précédente (injecté dans l'historique). NE L'OUBLIE PAS.
-- Si l'utilisateur pose une question de suivi (ex: "Et l'IHC ?"), réfère-toi au sujet initial (ex: Adénocarcinome vs Mésothéliome).
+- Si l'utilisateur pose une question de suivi (ex: "Et l'IHC ?"), réfère-toi au sujet initial.
 - RÈGLE IMPÉRATIVE DE FIN DE RÉPONSE :
-  Tu DOIS terminer ta réponse par une section visible intitulée exactemment "### Sources Consultées" suivi d'une liste à puces des URLs utilisées pour cette réponse spécifique. Si tu utilises le contexte précédent, ré-cite les sources pertinentes.
-  Exemple:
-  ... fin de la réponse.
-  
-  ### Sources Consultées
-  - [PathologyOutlines - Mesothelioma](https://www.pathologyoutlines.com/...)
-  - [PubMed - Article X](https://pubmed...)
+  Tu DOIS terminer ta réponse par une section visible intitulée exactemment "### Sources Consultées".
 
-RÈGLES SUR LES SOURCES:
-- Si le contexte est "pathout", base-toi EXCLUSIVEMENT sur pathologyoutlines.com.
-- Si le contexte est "pubmed", base-toi sur PubMed/NCBI.
-- Fournis si possible l'URL complète dans le champ "sources" pour qu'elle soit cliquable.
+RÈGLES SUR LES SOURCES DANS LE JSON:
+- Dans "directAnswer.sources": Fournis des URLs complètes.
+- Dans "tables" -> "rows" -> "citation":
+  - INTERDIT: Ne jamais utiliser le format "[cite: 1]", "[1]", ou des chiffres seuls.
+  - OBLIGATOIRE: Utilise l'URL complète si tu l'as, ou le nom du site (ex: "PathologyOutlines").
+  - Si tu ne sais pas, mets "Source non spécifiée".
 
 FORMAT DE RÉPONSE ATTENDU (JSON STRICT):
 Tu dois répondre UNIQUEMENT avec un objet JSON valide respectant cette structure précise :
 {
   "directAnswer": {
-    "text": "Synthèse directe...",
+    "text": "Synthèse directe avec renvois aux sources si possible...",
     "confidence": "high" | "medium" | "low" | "none",
     "sources": ["https://www.pathologyoutlines.com/topic/...", "Autre Source URL"]
   },
@@ -51,7 +47,7 @@ Tu dois répondre UNIQUEMENT avec un objet JSON valide respectant cette structur
       "dataQuality": "complete" | "partial" | "insufficient",
       "headers": ["Entité", "Clinique", "Macro", "Micro", "IHC", "Moléculaire"],
       "rows": [
-        { "values": ["Carcinome X", "Adulte, Rein", "Jaune or", "Cellules claires", "CK7-, CD10+", "VHL"], "citation": "PathOut" }
+        { "values": ["Carcinome X", "Adulte, Rein", "Jaune or", "Cellules claires", "CK7-, CD10+", "VHL"], "citation": "https://www.pathologyoutlines.com/..." }
       ]
     }
   ],
@@ -189,78 +185,111 @@ export const performSearch = async (apiKey, query, database = 'pathout', history
 
     console.log("Raw Gemini Response:", text); // Debug
 
-    // Nettoyage ultra-robuste du JSON
-    let jsonString = text;
-    
-    // 1. Suppression des blocs markdown ```json ... ```
-    jsonString = jsonString.replace(/```json/g, "").replace(/```/g, "");
-    
-    // 2. Extraction de l'objet JSON principal (du premier '{' au dernier '}')
-    const firstBracket = jsonString.indexOf('{');
-    const lastBracket = jsonString.lastIndexOf('}');
-    
-    if (firstBracket !== -1 && lastBracket !== -1) {
-      jsonString = jsonString.substring(firstBracket, lastBracket + 1);
-    }
-    
-    try {
-      const parsedData = JSON.parse(jsonString);
-      
-      // Enrichissement via Grounding Metadata (Sources Réelles vs Hallucinées)
-      if (response.candidates && response.candidates[0].groundingMetadata) {
-        const metadata = response.candidates[0].groundingMetadata;
-        parsedData._grounding = metadata;
-        
-        const chunks = metadata.groundingChunks || [];
-        const realWebSources = chunks
-          .filter(c => c.web && c.web.uri)
-          .map(c => c.web.uri);
-        
-        if (parsedData.directAnswer) {
-          // STRATÉGIE ANTI-HALLUCINATION STRICTE :
-          // On remplace totalement les sources générées par le LLM par les sources réelles du Grounding.
-          
-          if (realWebSources.length > 0) {
-            // 1. On sépare les sources PathologyOutlines des autres
-            const pathOutSources = realWebSources.filter(url => url.toLowerCase().includes('pathologyoutlines.com'));
-            const otherSources = realWebSources.filter(url => !url.toLowerCase().includes('pathologyoutlines.com'));
-            
-            // 2. On reconstruit la liste en mettant PathologyOutlines en premier
-            parsedData.directAnswer.sources = [...pathOutSources, ...otherSources].slice(0, 6);
-          } else {
-             // Fallback STRICT : Si Grounding n'a RIEN trouvé, on ne met PAS les liens hallucinés du LLM.
-             // On met un lien générique vers Google Search pour que l'utilisateur puisse vérifier lui-même.
-             parsedData.directAnswer.sources = [
-               `https://www.google.com/search?q=${encodeURIComponent(query + ' pathology')}`
-             ];
-             parsedData.userWarning = (parsedData.userWarning ? parsedData.userWarning + " " : "") + 
-               "⚠️ Aucune source vérifiée n'a été trouvée automatiquement. Le lien ci-dessus lance une recherche Google manuelle.";
-          }
-        }
-      }
-      return parsedData;
-    } catch (parseError) {
-      console.warn("JSON Parse Error - Falling back to raw text:", parseError);
-      
-      // FALLBACK ROBUSTE : On construit un JSON valide avec le texte brut
-      return {
-        directAnswer: {
-          text: text || "Aucune réponse textuelle générée par le modèle (Erreur API ou Filtre).",
-          confidence: "low",
-          sources: []
-        },
-        userWarning: "Le modèle n'a pas respecté le format JSON strict. Affichage du texte brut.",
-        tables: [],
-        narrativeSections: [],
-        imageSearches: { byEntity: [] },
-        searchSources: []
-      };
-    }
+    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+    return processGeminiResponse(text, groundingMetadata, query);
 
   } catch (error) {
     console.error("Gemini API Error:", error);
     if (error.message.includes("API key")) throw new Error("Clé API invalide ou expirée.");
     if (error.message.includes("429")) throw new Error("Quota dépassé pour ce modèle.");
     throw new Error(`Erreur Gemini: ${error.message}`);
+  }
+};
+
+/**
+ * Traite la réponse brute (texte JSON + metadata) pour en faire un objet propre.
+ * Exporté pour les tests unitaires.
+ */
+export const processGeminiResponse = (text, groundingMetadata, query = "") => {
+  // Nettoyage ultra-robuste du JSON
+  let jsonString = text;
+  
+  // 1. Suppression des blocs markdown ```json ... ```
+  jsonString = jsonString.replace(/```json/g, "").replace(/```/g, "");
+  
+  // 2. Extraction de l'objet JSON principal (du premier '{' au dernier '}')
+  const firstBracket = jsonString.indexOf('{');
+  const lastBracket = jsonString.lastIndexOf('}');
+  
+  if (firstBracket !== -1 && lastBracket !== -1) {
+    jsonString = jsonString.substring(firstBracket, lastBracket + 1);
+  }
+  
+  try {
+    const parsedData = JSON.parse(jsonString);
+    
+    // Enrichissement via Grounding Metadata (Sources Réelles vs Hallucinées)
+    if (groundingMetadata) {
+      parsedData._grounding = groundingMetadata;
+      
+      const chunks = groundingMetadata.groundingChunks || [];
+      const realWebSources = chunks
+        .filter(c => c.web && c.web.uri)
+        .map(c => c.web.uri);
+      
+      if (parsedData.directAnswer) {
+        // STRATÉGIE ANTI-HALLUCINATION STRICTE :
+        // On remplace totalement les sources générées par le LLM par les sources réelles du Grounding.
+        
+        if (realWebSources.length > 0) {
+          // 1. On sépare les sources PathologyOutlines des autres
+          const pathOutSources = realWebSources.filter(url => url.toLowerCase().includes('pathologyoutlines.com'));
+          const otherSources = realWebSources.filter(url => !url.toLowerCase().includes('pathologyoutlines.com'));
+          
+          // 2. On reconstruit la liste en mettant PathologyOutlines en premier
+          parsedData.directAnswer.sources = [...pathOutSources, ...otherSources].slice(0, 6);
+        } else {
+           // Fallback STRICT : Si Grounding n'a RIEN trouvé, on ne met PAS les liens hallucinés du LLM.
+           // On met un lien générique vers Google Search pour que l'utilisateur puisse vérifier lui-même.
+           parsedData.directAnswer.sources = [
+             `https://www.google.com/search?q=${encodeURIComponent(query + ' pathology')}`
+           ];
+           parsedData.userWarning = (parsedData.userWarning ? parsedData.userWarning + " " : "") + 
+             "⚠️ Aucune source vérifiée n'a été trouvée automatiquement. Le lien ci-dessus lance une recherche Google manuelle.";
+        }
+      }
+
+      // CORRECTION DES CITATIONS DANS LES TABLEAUX (Suppression des [cite: 1])
+      if (parsedData.tables && Array.isArray(parsedData.tables)) {
+        parsedData.tables.forEach(table => {
+          if (table.rows && Array.isArray(table.rows)) {
+            table.rows.forEach(row => {
+              // Regex pour détecter [cite: 1], [cite: 2], etc.
+              const citeRegex = /\[cite:\s*(\d+)\]/g;
+              
+              if (row.citation && typeof row.citation === 'string') {
+                row.citation = row.citation.replace(citeRegex, (match, number) => {
+                  const index = parseInt(number, 10) - 1; // [cite: 1] -> index 0
+                  if (realWebSources[index]) {
+                    return realWebSources[index];
+                  }
+                  return ""; // Si pas de source correspondante, on efface le [cite: X]
+                }).trim();
+                
+                // Si vide après remplacement, mettre une valeur par défaut
+                if (!row.citation) row.citation = "Source indisponible";
+              }
+            });
+          }
+        });
+      }
+    }
+    return parsedData;
+  } catch (parseError) {
+    console.warn("JSON Parse Error - Falling back to raw text:", parseError);
+    
+    // FALLBACK ROBUSTE : On construit un JSON valide avec le texte brut
+    return {
+      directAnswer: {
+        text: text || "Aucune réponse textuelle générée par le modèle (Erreur API ou Filtre).",
+        confidence: "low",
+        sources: []
+      },
+      userWarning: "Le modèle n'a pas respecté le format JSON strict. Affichage du texte brut.",
+      tables: [],
+      narrativeSections: [],
+      imageSearches: { byEntity: [] },
+      searchSources: []
+    };
   }
 };
