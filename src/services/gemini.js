@@ -112,10 +112,15 @@ export const performSearch = async (apiKey, query, database = 'pathout', history
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: modelName,
       systemInstruction: SYSTEM_INSTRUCTION,
-      tools: [{ googleSearch: {} }]
+      tools: [{ googleSearch: {} }],
+      generationConfig: {
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 0 } // Désactive le mode "thinking" des modèles Gemini 2.5
+                                               // pour éviter les réponses texte vides (tokens de réflexion non retournés)
+      }
     });
 
     // Construction du contexte de conversation
@@ -184,6 +189,13 @@ export const performSearch = async (apiKey, query, database = 'pathout', history
     const text = response.text();
 
     console.log("Raw Gemini Response:", text); // Debug
+
+    // Guard : réponse vide (ex: modèle thinking sans output, filtre de sécurité)
+    if (!text || text.trim() === '') {
+      const finishReason = response.candidates?.[0]?.finishReason || 'UNKNOWN';
+      console.warn(`Gemini returned empty text. finishReason: ${finishReason}`);
+      throw new Error(`Le modèle n'a produit aucune réponse (raison: ${finishReason}). Essayez un modèle différent.`);
+    }
 
     const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
     return processGeminiResponse(text, groundingMetadata, query);

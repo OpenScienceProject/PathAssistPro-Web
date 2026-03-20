@@ -309,6 +309,31 @@ const MainApp = ({ apiKey, modelName, onDisconnect }) => {
                         ) : (
                           <div className="prose prose-sm max-w-none">
                             <MarkdownRenderer content={msg.content} />
+                            {/* Sources numérotées issues du JSON structuré */}
+                            {msg.structuredData?.directAnswer?.sources?.filter(s => s && s.startsWith('http')).length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-gray-100">
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sources Consultées</p>
+                                <ol className="space-y-1 list-none p-0">
+                                  {msg.structuredData.directAnswer.sources
+                                    .filter(s => s && s.startsWith('http'))
+                                    .map((src, idx) => (
+                                      <li key={idx} className="flex items-start gap-1.5">
+                                        <span className="text-xs text-gray-400 font-mono mt-0.5">[{idx + 1}]</span>
+                                        <a
+                                          href={src}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-xs text-indigo-600 hover:text-indigo-800 underline break-all inline-flex items-center gap-1"
+                                        >
+                                          {src.length > 70 ? src.substring(0, 70) + '…' : src}
+                                          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                        </a>
+                                      </li>
+                                    ))
+                                  }
+                                </ol>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
