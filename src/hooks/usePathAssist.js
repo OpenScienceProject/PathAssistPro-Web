@@ -85,7 +85,8 @@ export const usePathAssist = (apiKey, modelName = 'gemini-3-pro') => {
       // On reconstruit l'historique complet : [Contexte Initial] + [Chat précédents] + [Question actuelle]
       const history = [initialContextMsg, ...session.chatMessages, userMsg];
       
-      const result = await performSearch(apiKey, message, session.metadata.database, history, modelName);
+      // Chat uses 'extended' so the model can search freely (PathOut + PubMed + Web)
+      const result = await performSearch(apiKey, message, 'extended', history, modelName);
 
       // 3. Ajouter la réponse de l'assistant
       // Note: Le format de retour de Gemini est complexe (celui de performSearch). 

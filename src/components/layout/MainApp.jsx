@@ -8,9 +8,7 @@ import MarkdownRenderer from '../ui/MarkdownRenderer';
 
 const MainApp = ({ apiKey, modelName, onDisconnect }) => {
   const [query, setQuery] = useState('');
-  const [selectedDatabase, setSelectedDatabase] = useState('pathout');
   const [chatInput, setChatInput] = useState('');
-  const [activeTab, setActiveTab] = useState('pathout'); // Pour le nouveau sélecteur de base
   
   const { 
     loading, 
@@ -34,9 +32,7 @@ const MainApp = ({ apiKey, modelName, onDisconnect }) => {
 
   const handleSearch = () => {
     if (query.trim()) {
-      // Mapping du nouveau sélecteur UX vers les valeurs techniques
-      const db = activeTab === 'extended' ? 'pubmed' : 'pathout'; // Simplification temporaire
-      executeSearch(query, db);
+      executeSearch(query, 'pathout');
     }
   };
 
@@ -96,30 +92,6 @@ const MainApp = ({ apiKey, modelName, onDisconnect }) => {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Search Bar Area */}
         <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          {/* Onglets de Recherche (Correctif Problème 9) */}
-          <div className="flex gap-4 mb-4 border-b border-gray-100 pb-2">
-            <button
-              onClick={() => setActiveTab('pathout')}
-              className={`pb-2 text-sm font-semibold transition-colors ${
-                activeTab === 'pathout' 
-                  ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              📚 PathologyOutlines (Défaut)
-            </button>
-            <button
-              onClick={() => setActiveTab('extended')}
-              className={`pb-2 text-sm font-semibold transition-colors ${
-                activeTab === 'extended' 
-                  ? 'text-indigo-600 border-b-2 border-indigo-600' 
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              🌐 Etendu à la littérature (pathology + Pubmed)
-            </button>
-          </div>
-
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <input
@@ -281,19 +253,6 @@ const MainApp = ({ apiKey, modelName, onDisconnect }) => {
                     Assistant Virtuel
                   </h3>
                   
-                  {/* Selecteur de base pour le chat (Correctif Problème 8) */}
-                  <div className="flex items-center gap-2">
-                     <span className="text-xs text-indigo-700 font-medium">Source:</span>
-                     <select 
-                       value={selectedDatabase}
-                       onChange={(e) => setSelectedDatabase(e.target.value)}
-                       className="text-xs border-indigo-200 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
-                     >
-                       <option value="pathout">📚 PathOut</option>
-                       <option value="pubmed">🔬 PubMed</option>
-                       <option value="google">🌐 Web</option>
-                     </select>
-                  </div>
                 </div>
                 
                 <div className="h-96 overflow-y-auto p-6 bg-gray-50/50 space-y-4">
@@ -357,7 +316,7 @@ const MainApp = ({ apiKey, modelName, onDisconnect }) => {
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleChatSubmit()}
-                      placeholder={`Question sur la base ${selectedDatabase}...`}
+                      placeholder="Posez une question de suivi..."
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-xl focus:border-indigo-500 focus:outline-none"
                     />
                     <button 

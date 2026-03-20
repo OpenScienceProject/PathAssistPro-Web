@@ -1,5 +1,5 @@
 
-import { describe, it, expect } from 'vitest';
+import { describe, it } from 'vitest';
 import { processGeminiResponse } from './gemini';
 
 // Simple mock test suite since we don't have Vitest installed yet.

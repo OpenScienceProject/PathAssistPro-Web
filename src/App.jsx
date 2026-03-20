@@ -4,13 +4,10 @@ import MainApp from './components/layout/MainApp';
 
 function App() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key'));
-  const [modelName, setModelName] = useState(() => localStorage.getItem('gemini_model_name') || 'gemini-3-pro-preview');
+  const [modelName] = useState('gemini-2.5-flash-lite');
 
-  // useEffect removed as state is now initialized lazily
-
-  const handleOnboardingComplete = (key, model) => {
+  const handleOnboardingComplete = (key) => {
     setApiKey(key);
-    setModelName(model);
   };
 
   const handleDisconnect = () => {
